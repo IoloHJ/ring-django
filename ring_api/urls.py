@@ -82,4 +82,35 @@ urlpatterns = [
         views.ring_user,
         name="ring-user",
     ),
+
+    # ============================================================
+    path(
+        "ring/history/",
+        views.ring_history,
+        name="ring-history",
+    ),
+
+    # ============================================================
+    # RING HISTORY VIDEO
+    #
+    # IMPORTANT:
+    # This specific route must be before the generic
+    # history/<device_id>/ route.
+    # ============================================================
+
+    path(
+        "ring/history/<str:device_id>/video/<str:event_id>/",
+        views.ring_history_video,
+        name="ring-history-video",
+    ),
+
+    # ============================================================
+    # RING HISTORY API
+    # ============================================================
+
+    path(
+        "ring/history/<str:device_id>/",
+        views.ring_history_api,
+        name="ring-history-api",
+    ),
 ]

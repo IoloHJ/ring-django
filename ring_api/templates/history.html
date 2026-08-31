@@ -1,0 +1,488 @@
+{% load static %}
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+
+    <meta
+        name="viewport"
+        content="width=device-width, initial-scale=1.0"
+    >
+
+    <title>Ring History</title>
+
+    <link
+        rel="stylesheet"
+        href="{% static 'css/history.css' %}?v=30"
+    >
+</head>
+
+<body>
+
+<div class="history-page">
+
+    <!-- =====================================================
+         HEADER
+         ===================================================== -->
+
+    <header class="history-header">
+
+        <div>
+            <div class="eyebrow">
+                RING SECURITY
+            </div>
+
+            <h1>
+                Event History
+            </h1>
+
+            <p>
+                View recent activity from your Ring cameras.
+            </p>
+        </div>
+
+        <div class="header-actions">
+
+            <button
+                id="refreshButton"
+                class="button button-secondary"
+                type="button"
+            >
+                ↻ Refresh
+            </button>
+
+        </div>
+
+    </header>
+
+
+    <!-- =====================================================
+         CONTROL BAR
+         ===================================================== -->
+
+    <section class="control-panel">
+
+        <div class="control-group">
+
+            <label
+                for="deviceSelect"
+            >
+                Camera
+            </label>
+
+            <select
+                id="deviceSelect"
+                class="device-select"
+            >
+                <option value="">
+                    Loading cameras...
+                </option>
+            </select>
+
+        </div>
+
+
+        <div class="connection-status">
+
+            <span
+                id="status"
+                class="status status--loading"
+            >
+                Loading devices...
+            </span>
+
+        </div>
+
+    </section>
+
+
+    <!-- =====================================================
+         SUMMARY
+         ===================================================== -->
+
+    <section class="summary-grid">
+
+        <div class="summary-card">
+
+            <span class="summary-label">
+                Selected Camera
+            </span>
+
+            <strong
+                id="selectedCamera"
+                class="summary-value"
+            >
+                Loading...
+            </strong>
+
+        </div>
+
+
+        <div class="summary-card">
+
+            <span class="summary-label">
+                Events
+            </span>
+
+            <strong
+                id="eventCount"
+                class="summary-value"
+            >
+                0
+            </strong>
+
+        </div>
+
+
+        <div class="summary-card">
+
+            <span class="summary-label">
+                History Status
+            </span>
+
+            <strong
+                id="historyStatus"
+                class="summary-value"
+            >
+                Loading
+            </strong>
+
+        </div>
+
+
+        <div class="summary-card">
+
+            <span class="summary-label">
+                Last Updated
+            </span>
+
+            <strong
+                id="lastUpdated"
+                class="summary-value"
+            >
+                —
+            </strong>
+
+        </div>
+
+    </section>
+
+
+    <!-- =====================================================
+         MAIN CONTENT
+         ===================================================== -->
+
+    <main class="history-content">
+
+        <!-- LOADING -->
+
+        <section
+            id="loadingState"
+            class="state-card"
+        >
+
+            <div class="spinner"></div>
+
+            <h2>
+                Loading history
+            </h2>
+
+            <p>
+                Retrieving events from Ring...
+            </p>
+
+        </section>
+
+
+        <!-- ERROR -->
+
+        <section
+            id="errorState"
+            class="state-card state-error"
+            hidden
+        >
+
+            <div class="state-icon">
+                !
+            </div>
+
+            <h2>
+                Unable to load history
+            </h2>
+
+            <p id="errorMessage">
+                Something went wrong.
+            </p>
+
+            <button
+                id="errorRetryButton"
+                class="button button-primary"
+                type="button"
+            >
+                Try Again
+            </button>
+
+        </section>
+
+
+        <!-- EMPTY -->
+
+        <section
+            id="emptyState"
+            class="state-card"
+            hidden
+        >
+
+            <div class="state-icon">
+                ○
+            </div>
+
+            <h2>
+                No events found
+            </h2>
+
+            <p>
+                There are no Ring events available for this camera.
+            </p>
+
+        </section>
+
+
+        <!-- EVENTS -->
+
+        <section
+            id="eventsContainer"
+            class="events-container"
+        >
+        </section>
+
+    </main>
+
+</div>
+
+
+<!-- =========================================================
+     EVENT MODAL
+     ========================================================= -->
+
+<div
+    id="eventModal"
+    class="event-modal"
+    hidden
+    aria-hidden="true"
+>
+
+    <div
+        id="modalBackdrop"
+        class="modal-backdrop"
+    ></div>
+
+
+    <div
+        class="modal-dialog"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="modalTitle"
+    >
+
+        <!-- MODAL HEADER -->
+
+        <div class="modal-header">
+
+            <div>
+
+                <span class="modal-eyebrow">
+                    RING EVENT
+                </span>
+
+                <h2
+                    id="modalTitle"
+                >
+                    Event
+                </h2>
+
+            </div>
+
+
+            <button
+                id="closeModalButton"
+                class="modal-close"
+                type="button"
+                aria-label="Close event"
+            >
+                ×
+            </button>
+
+        </div>
+
+
+        <!-- =================================================
+             VIDEO
+             ================================================= -->
+
+        <div
+            id="videoSection"
+            class="video-section"
+        >
+
+            <div
+                id="videoLoading"
+                class="video-message"
+                hidden
+            >
+
+                <div class="spinner"></div>
+
+                <span>
+                    Loading recording...
+                </span>
+
+            </div>
+
+
+            <video
+                id="eventVideo"
+                class="event-video"
+                controls
+                playsinline
+                preload="metadata"
+                hidden
+            >
+                Your browser does not support HTML5 video.
+            </video>
+
+
+            <div
+                id="videoUnavailable"
+                class="video-message video-unavailable"
+                hidden
+            >
+
+                <div class="video-icon">
+                    ▶
+                </div>
+
+                <strong>
+                    Recording unavailable
+                </strong>
+
+                <span id="videoErrorMessage">
+                    The recording could not be loaded.
+                </span>
+
+            </div>
+
+        </div>
+
+
+        <!-- =================================================
+             EVENT INFORMATION
+             ================================================= -->
+
+        <div class="modal-details">
+
+            <div class="detail-row">
+
+                <span>
+                    Camera
+                </span>
+
+                <strong id="modalCamera">
+                    —
+                </strong>
+
+            </div>
+
+
+            <div class="detail-row">
+
+                <span>
+                    Event
+                </span>
+
+                <strong id="modalEventType">
+                    —
+                </strong>
+
+            </div>
+
+
+            <div class="detail-row">
+
+                <span>
+                    Start
+                </span>
+
+                <strong id="modalStart">
+                    —
+                </strong>
+
+            </div>
+
+
+            <div class="detail-row">
+
+                <span>
+                    End
+                </span>
+
+                <strong id="modalEnd">
+                    —
+                </strong>
+
+            </div>
+
+
+            <div class="detail-row">
+
+                <span>
+                    Duration
+                </span>
+
+                <strong id="modalDuration">
+                    —
+                </strong>
+
+            </div>
+
+        </div>
+
+
+        <!-- =================================================
+             MODAL FOOTER
+             ================================================= -->
+
+        <div class="modal-footer">
+
+            <button
+                id="modalPlayButton"
+                class="button button-primary"
+                type="button"
+                hidden
+            >
+                ▶ Play Recording
+            </button>
+
+            <button
+                id="modalCloseFooterButton"
+                class="button button-secondary"
+                type="button"
+            >
+                Close
+            </button>
+
+        </div>
+
+    </div>
+
+</div>
+
+
+<script
+    src="{% static 'js/history.js' %}?v=30"
+    defer
+></script>
+
+</body>
+</html>

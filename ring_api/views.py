@@ -7,11 +7,22 @@ import secrets
 import time
 from django.shortcuts import render
 import requests
-
+import logging
+import requests
+from django.conf import settings
+from django.http import JsonResponse
+from django.shortcuts import render
 from django.conf import settings
 from django.http import HttpResponse, JsonResponse
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_GET, require_POST
+import os
+import requests
+
+from django.http import JsonResponse, StreamingHttpResponse
+from django.shortcuts import render
+from django.views.decorators.http import require_GET
+from django.conf import settings
 
 from .models import RingToken, RingWebhookEvent
 
@@ -1353,3 +1364,654 @@ def ring_webhook(request):
                 "received",
         }
     )
+
+# ============================================================================
+# RING HISTORY
+# ============================================================================
+
+# ============================================================================
+# RING HISTORY
+# ============================================================================
+
+RING_API_BASE = "https://api.amazonvision.com"
+
+
+def get_ring_access_token():
+    """
+    Get the currently stored Ring access token.
+
+    IMPORTANT:
+    The live Ring integration already stores the OAuth access token
+    in RingToken. History must use that same token.
+
+    Environment variables are only used as a fallback.
+    """
+
+    # ------------------------------------------------------------
+    # FIRST: use the working database token
+    # ------------------------------------------------------------
+
+    try:
+        token = (
+            RingToken.objects
+            .order_by("-updated_at")
+            .first()
+        )
+
+        if token and token.access_token:
+            print(
+                "[RING AUTH] Using access token from RingToken database"
+            )
+
+            return token.access_token
+
+    except Exception as exc:
+
+        print(
+            "[RING AUTH] Database token lookup failed:",
+            repr(exc),
+        )
+
+    # ------------------------------------------------------------
+    # FALLBACK: environment variables
+    # ------------------------------------------------------------
+
+    token = (
+        os.getenv("RING_ACCESS_TOKEN")
+        or os.getenv("AVA_ACCESS_TOKEN")
+        or os.getenv("ACCESS_TOKEN")
+    )
+
+    if token:
+
+        print(
+            "[RING AUTH] Using access token from environment"
+        )
+
+        return token
+
+    # ------------------------------------------------------------
+    # NOTHING FOUND
+    # ------------------------------------------------------------
+
+    raise RuntimeError(
+        "No Ring access token is available. "
+        "No token was found in RingToken or the environment."
+    )
+
+
+def ring_api_get(url, params=None):
+    """
+    Make a server-side GET request to the Ring Partner API
+    using the same access token as the working live integration.
+    """
+
+    access_token = get_ring_access_token()
+
+    headers = {
+        "Authorization": f"Bearer {access_token}",
+        "Accept": "application/vnd.api+json",
+    }
+
+    print(
+        "[RING API GET]",
+        url,
+    )
+
+    if params:
+        print(
+            "[RING API GET] Params:",
+            params,
+        )
+
+    response = requests.get(
+        url,
+        headers=headers,
+        params=params,
+        timeout=60,
+        allow_redirects=True,
+    )
+
+    print(
+        "[RING API GET] HTTP:",
+        response.status_code,
+    )
+
+    return response
+
+
+def ring_api_post(url, payload):
+    """
+    Make a server-side POST request to the Ring Partner API
+    using the same access token as the working live integration.
+    """
+
+    access_token = get_ring_access_token()
+
+    headers = {
+        "Authorization": f"Bearer {access_token}",
+        "Accept": "*/*",
+        "Content-Type": "application/json",
+    }
+
+    print(
+        "[RING API POST]",
+        url,
+    )
+
+    print(
+        "[RING API POST] Payload:",
+        payload,
+    )
+
+    response = requests.post(
+        url,
+        headers=headers,
+        json=payload,
+        timeout=60,
+        allow_redirects=True,
+    )
+
+    print(
+        "[RING API POST] HTTP:",
+        response.status_code,
+    )
+
+    return response
+
+
+# ============================================================================
+# HISTORY PAGE
+# ============================================================================
+
+@require_GET
+def ring_history(request):
+    """
+    Render the Ring history page.
+    """
+
+    return render(
+        request,
+        "history.html",
+    )
+
+
+# ============================================================================
+# HISTORY API
+# ============================================================================
+
+@require_GET
+def ring_history_api(request, device_id):
+    """
+    Return Ring history events for a device.
+
+    Uses the same RingToken database authentication as the
+    working /ring/devices/ and live endpoints.
+
+    Browser:
+        GET /ring/history/<device_id>/
+
+    Ring:
+        GET /v1/history/devices/<device_id>/events
+    """
+
+    print("=" * 70)
+    print("[HISTORY API] Request received")
+    print("[HISTORY API] Device:", device_id)
+
+    # ------------------------------------------------------------------------
+    # Get the same stored Ring token used by the working devices/live APIs
+    # ------------------------------------------------------------------------
+
+    token = (
+        RingToken.objects
+        .order_by("-updated_at")
+        .first()
+    )
+
+    if not token:
+        print("[HISTORY API] No Ring token found")
+
+        return JsonResponse(
+            {
+                "error": "no_ring_token",
+                "message": "No Ring account is linked.",
+            },
+            status=401,
+        )
+
+    access_token = token.access_token
+
+    if not access_token:
+        print("[HISTORY API] Ring token exists but access token is empty")
+
+        return JsonResponse(
+            {
+                "error": "missing_access_token",
+                "message": "The stored Ring access token is empty.",
+            },
+            status=401,
+        )
+
+    # ------------------------------------------------------------------------
+    # Build Ring History API URL
+    # ------------------------------------------------------------------------
+
+    url = (
+        f"{RING_API_BASE}"
+        f"/v1/history/devices/{device_id}/events"
+    )
+
+    # ------------------------------------------------------------------------
+    # Optional query parameters
+    # ------------------------------------------------------------------------
+
+    params = {}
+
+    event_types = request.GET.get("event_types")
+
+    if event_types:
+        params["event_types"] = event_types
+
+    page_key = request.GET.get("page_key")
+
+    if page_key:
+        params["page[key]"] = page_key
+
+    print("[HISTORY API] Ring URL:", url)
+    print("[HISTORY API] Params:", params)
+
+    # ------------------------------------------------------------------------
+    # IMPORTANT:
+    #
+    # Do NOT use ring_api_get() here because that helper is currently
+    # looking for RING_ACCESS_TOKEN.
+    #
+    # We already have the working database token above.
+    # ------------------------------------------------------------------------
+
+    headers = {
+        "Authorization": f"Bearer {access_token}",
+        "Accept": "application/vnd.api+json",
+    }
+
+    try:
+
+        response = requests.get(
+            url,
+            headers=headers,
+            params=params,
+            timeout=60,
+            allow_redirects=True,
+        )
+
+        print(
+            "[HISTORY API] Ring HTTP status:",
+            response.status_code,
+        )
+
+    except requests.RequestException as exc:
+
+        print(
+            "[HISTORY API] Request exception:",
+            repr(exc),
+        )
+
+        logger.exception(
+            "[HISTORY API] Ring history request failed"
+        )
+
+        return JsonResponse(
+            {
+                "error": "ring_history_request_failed",
+                "details": str(exc),
+            },
+            status=502,
+        )
+
+    # ------------------------------------------------------------------------
+    # Handle Ring API errors
+    # ------------------------------------------------------------------------
+
+    if response.status_code != 200:
+
+        print(
+            "[HISTORY API] Ring response:",
+            response.text[:3000],
+        )
+
+        return JsonResponse(
+            {
+                "error": "ring_history_api_error",
+                "status_code": response.status_code,
+                "details": response.text,
+            },
+            status=response.status_code,
+        )
+
+    # ------------------------------------------------------------------------
+    # Decode JSON
+    # ------------------------------------------------------------------------
+
+    try:
+
+        data = response.json()
+
+    except ValueError:
+
+        print(
+            "[HISTORY API] Ring returned invalid JSON:"
+        )
+
+        print(
+            response.text[:3000]
+        )
+
+        return JsonResponse(
+            {
+                "error": "invalid_ring_response",
+                "details": response.text[:1000],
+            },
+            status=502,
+        )
+
+    # ------------------------------------------------------------------------
+    # Log number of events
+    # ------------------------------------------------------------------------
+
+    events = data.get(
+        "data",
+        []
+    )
+
+    print(
+        "[HISTORY API] Events returned:",
+        len(events),
+    )
+
+    print("=" * 70)
+
+    # ------------------------------------------------------------------------
+    # Return Ring response directly to browser
+    # ------------------------------------------------------------------------
+
+    return JsonResponse(
+        data,
+        status=200,
+    )
+
+
+# ============================================================================
+# HISTORY VIDEO
+# ============================================================================
+
+# ============================================================================
+# HISTORY VIDEO
+# ============================================================================
+
+@require_GET
+def ring_history_video(request, device_id, event_id):
+    """
+    Retrieve a historical Ring video clip for a history event.
+
+    Browser:
+        GET /ring/history/<device_id>/video/<event_id>/
+
+    Ring Partner API:
+        POST /v1/devices/<device_id>/media/video/download
+
+    The Ring API returns MP4 binary media.
+
+    The event_id is retained for logging/correlation. The actual
+    media request uses the event's start timestamp and duration.
+    """
+
+    print("=" * 70)
+    print("[HISTORY VIDEO] Request received")
+    print("[HISTORY VIDEO] Device:", device_id)
+    print("[HISTORY VIDEO] Event:", event_id)
+
+    # ------------------------------------------------------------------------
+    # Read requested time range
+    # ------------------------------------------------------------------------
+
+    start = request.GET.get("start")
+    duration = request.GET.get("duration")
+
+    print("[HISTORY VIDEO] Start:", start)
+    print("[HISTORY VIDEO] Duration:", duration)
+
+    if not start:
+        return JsonResponse(
+            {
+                "error": "missing_start_timestamp",
+                "message": "A start timestamp is required.",
+            },
+            status=400,
+        )
+
+    try:
+        start_timestamp = int(start)
+
+    except (TypeError, ValueError):
+
+        return JsonResponse(
+            {
+                "error": "invalid_start_timestamp",
+                "message": "Start timestamp must be an integer.",
+            },
+            status=400,
+        )
+
+    # ------------------------------------------------------------------------
+    # Duration
+    # ------------------------------------------------------------------------
+
+    try:
+        duration_ms = int(duration or 0)
+
+    except (TypeError, ValueError):
+
+        duration_ms = 0
+
+    # Ring allows a maximum of 15 minutes.
+    if duration_ms <= 0:
+        duration_ms = 60_000
+
+    duration_ms = min(
+        duration_ms,
+        15 * 60 * 1000,
+    )
+
+    print(
+        "[HISTORY VIDEO] Requesting duration:",
+        duration_ms,
+        "ms",
+    )
+
+    # ------------------------------------------------------------------------
+    # Ring Media Clips endpoint
+    # ------------------------------------------------------------------------
+
+    url = (
+        f"{RING_API_BASE}"
+        f"/v1/devices/{device_id}"
+        f"/media/video/download"
+    )
+
+    print(
+        "[HISTORY VIDEO] Ring URL:",
+        url,
+    )
+
+    # ------------------------------------------------------------------------
+    # Ring request payload
+    # ------------------------------------------------------------------------
+
+    payload = {
+        "timestamp": start_timestamp,
+        "duration": duration_ms,
+
+        # Request a broadly compatible video.
+        "video_options": {
+            "codec": "avc",
+            "frame_rate": 25,
+            "resolution": {
+                "width": 1920,
+                "height": 1080,
+            },
+        },
+
+        # Enable audio where available.
+        "audio_options": {
+            "audio_enabled": True,
+        },
+    }
+
+    print(
+        "[HISTORY VIDEO] Payload:",
+        payload,
+    )
+
+    # ------------------------------------------------------------------------
+    # Get working Ring token
+    # ------------------------------------------------------------------------
+
+    try:
+
+        access_token = get_ring_access_token()
+
+    except Exception as exc:
+
+        print(
+            "[HISTORY VIDEO] Token error:",
+            repr(exc),
+        )
+
+        return JsonResponse(
+            {
+                "error": "ring_authentication_error",
+                "details": str(exc),
+            },
+            status=500,
+        )
+
+    # ------------------------------------------------------------------------
+    # Call Ring Media Clips API
+    # ------------------------------------------------------------------------
+
+    headers = {
+        "Authorization": f"Bearer {access_token}",
+        "Content-Type": "application/json",
+        "Accept": "video/mp4",
+    }
+
+    try:
+
+        response = requests.post(
+            url,
+            headers=headers,
+            json=payload,
+            timeout=120,
+            allow_redirects=True,
+        )
+
+    except requests.RequestException as exc:
+
+        print(
+            "[HISTORY VIDEO] Request exception:",
+            repr(exc),
+        )
+
+        logger.exception(
+            "[HISTORY VIDEO] Ring media request failed"
+        )
+
+        return JsonResponse(
+            {
+                "error": "ring_video_request_failed",
+                "details": str(exc),
+            },
+            status=502,
+        )
+
+    print(
+        "[HISTORY VIDEO] Ring HTTP status:",
+        response.status_code,
+    )
+
+    print(
+        "[HISTORY VIDEO] Content-Type:",
+        response.headers.get("Content-Type"),
+    )
+
+    print(
+        "[HISTORY VIDEO] Content-Length:",
+        response.headers.get("Content-Length"),
+    )
+
+    # ------------------------------------------------------------------------
+    # Ring errors
+    # ------------------------------------------------------------------------
+
+    if response.status_code not in (200, 206):
+
+        print(
+            "[HISTORY VIDEO] Ring error response:",
+            response.text[:3000],
+        )
+
+        return JsonResponse(
+            {
+                "error": "ring_video_api_error",
+                "status_code": response.status_code,
+                "details": response.text[:3000],
+            },
+            status=response.status_code,
+        )
+
+    # ------------------------------------------------------------------------
+    # Return MP4 directly to browser
+    # ------------------------------------------------------------------------
+
+    content_type = (
+        response.headers.get(
+            "Content-Type"
+        )
+        or "video/mp4"
+    )
+
+    django_response = HttpResponse(
+        response.content,
+        content_type=content_type,
+        status=response.status_code,
+    )
+
+    # Tell browser this is playable media.
+    django_response["Accept-Ranges"] = "bytes"
+
+    # Preserve useful Ring media metadata.
+    for header_name in (
+        "Content-Length",
+        "Content-Range",
+        "X-Media-Length",
+        "X-Media-Duration",
+        "X-Request-ID",
+    ):
+
+        value = response.headers.get(
+            header_name
+        )
+
+        if value:
+            django_response[header_name] = value
+
+    print(
+        "[HISTORY VIDEO] Returning",
+        len(response.content),
+        "bytes to browser",
+    )
+
+    print("=" * 70)
+
+    return django_response
