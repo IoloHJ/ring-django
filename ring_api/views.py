@@ -1375,20 +1375,26 @@ def ring_webhook(request):
 
 RING_API_BASE = "https://api.amazonvision.com"
 
-
 def get_ring_access_token():
     """
-    Get the currently stored Ring access token.
+    Return the current Ring access token.
 
-    IMPORTANT:
-    The live Ring integration already stores the OAuth access token
-    in RingToken. History must use that same token.
+    If the stored token is expired or close to expiry, refresh it
+    automatically using the stored Ring refresh token.
 
-    Environment variables are only used as a fallback.
+    This is shared by the Ring API views so live, alerts, history,
+    recordings, etc. can all use the same authentication mechanism.
     """
 
+    import os
+    from datetime import timedelta
+
+    import requests
+
+    from django.utils import timezone
+
     # ------------------------------------------------------------
-    # FIRST: use the working database token
+    # Find the most recently updated Ring token
     # ------------------------------------------------------------
 
     try:
@@ -1397,47 +1403,187 @@ def get_ring_access_token():
             .order_by("-updated_at")
             .first()
         )
-
-        if token and token.access_token:
-            print(
-                "[RING AUTH] Using access token from RingToken database"
-            )
-
-            return token.access_token
-
     except Exception as exc:
-
         print(
             "[RING AUTH] Database token lookup failed:",
             repr(exc),
         )
+        token = None
 
     # ------------------------------------------------------------
-    # FALLBACK: environment variables
+    # No database token
     # ------------------------------------------------------------
 
-    token = (
-        os.getenv("RING_ACCESS_TOKEN")
-        or os.getenv("AVA_ACCESS_TOKEN")
-        or os.getenv("ACCESS_TOKEN")
-    )
-
-    if token:
-
-        print(
-            "[RING AUTH] Using access token from environment"
+    if not token:
+        fallback = (
+            os.getenv("RING_ACCESS_TOKEN")
+            or os.getenv("AVA_ACCESS_TOKEN")
+            or os.getenv("ACCESS_TOKEN")
         )
 
-        return token
+        if fallback:
+            print(
+                "[RING AUTH] Using access token from environment"
+            )
+            return fallback
+
+        raise RuntimeError(
+            "No Ring access token is available."
+        )
 
     # ------------------------------------------------------------
-    # NOTHING FOUND
+    # Check whether the access token is still valid
     # ------------------------------------------------------------
 
-    raise RuntimeError(
-        "No Ring access token is available. "
-        "No token was found in RingToken or the environment."
+    now = timezone.now()
+
+    token_is_valid = False
+
+    if (
+        token.access_token
+        and token.expires_in
+        and token.created_at
+    ):
+        expires_at = (
+            token.created_at
+            + timedelta(seconds=token.expires_in)
+        )
+
+        # Refresh five minutes before expiry.
+        refresh_at = (
+            expires_at
+            - timedelta(seconds=300)
+        )
+
+        if now < refresh_at:
+            token_is_valid = True
+
+    # ------------------------------------------------------------
+    # Valid token
+    # ------------------------------------------------------------
+
+    if token_is_valid:
+        return token.access_token
+
+    # ------------------------------------------------------------
+    # Token expired / close to expiry
+    # ------------------------------------------------------------
+
+    print(
+        "[RING AUTH] Access token expired or close to expiry."
     )
+
+    if not token.refresh_token:
+        raise RuntimeError(
+            "Ring access token has expired and no refresh token "
+            "is available."
+        )
+
+    client_id = os.getenv("RING_CLIENT_ID")
+    client_secret = os.getenv("RING_CLIENT_SECRET")
+
+    if not client_id:
+        raise RuntimeError(
+            "RING_CLIENT_ID is not configured."
+        )
+
+    if not client_secret:
+        raise RuntimeError(
+            "RING_CLIENT_SECRET is not configured."
+        )
+
+    token_url = os.getenv(
+        "RING_TOKEN_URL",
+        "https://oauth.ring.com/oauth/token",
+    )
+
+    # ------------------------------------------------------------
+    # Refresh
+    # ------------------------------------------------------------
+
+    try:
+        response = requests.post(
+            token_url,
+            data={
+                "grant_type": "refresh_token",
+                "refresh_token": token.refresh_token,
+                "client_id": client_id,
+                "client_secret": client_secret,
+            },
+            headers={
+                "Accept": "application/json",
+            },
+            timeout=30,
+        )
+    except requests.RequestException as exc:
+        print(
+            "[RING AUTH] Token refresh request failed:",
+            repr(exc),
+        )
+
+        raise RuntimeError(
+            "Unable to contact Ring OAuth server."
+        )
+
+    # ------------------------------------------------------------
+    # Ring rejected refresh
+    # ------------------------------------------------------------
+
+    if response.status_code != 200:
+        print(
+            "[RING AUTH] Token refresh failed:",
+            response.status_code,
+            response.text[:500],
+        )
+
+        raise RuntimeError(
+            f"Ring token refresh failed "
+            f"(HTTP {response.status_code})."
+        )
+
+    try:
+        data = response.json()
+    except ValueError:
+        raise RuntimeError(
+            "Ring returned an invalid token response."
+        )
+
+    new_access_token = data.get("access_token")
+
+    if not new_access_token:
+        raise RuntimeError(
+            "Ring token response did not contain access_token."
+        )
+
+    # ------------------------------------------------------------
+    # Save new access token
+    # ------------------------------------------------------------
+
+    token.access_token = new_access_token
+
+    # Ring can rotate refresh tokens.
+    # Always save the new one when supplied.
+    if data.get("refresh_token"):
+        token.refresh_token = data["refresh_token"]
+
+    if data.get("token_type"):
+        token.token_type = data["token_type"]
+
+    if data.get("scope"):
+        token.scope = data["scope"]
+
+    if data.get("expires_in") is not None:
+        token.expires_in = int(data["expires_in"])
+
+    token.save()
+
+    print(
+        "[RING AUTH] Access token refreshed successfully."
+    )
+
+    return token.access_token
+
+
 
 
 def ring_api_get(url, params=None):

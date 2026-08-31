@@ -1,6 +1,6 @@
 from django.urls import path
 
-from . import views
+from . import views, alerts_views
 
 
 urlpatterns = [
@@ -112,5 +112,47 @@ urlpatterns = [
         "ring/history/<str:device_id>/",
         views.ring_history_api,
         name="ring-history-api",
+    ),
+
+    path(
+        "ring/alerts/",
+        alerts_views.ring_alerts_page,
+        name="ring_alerts",
+    ),
+
+    # ============================================================
+    # ALERTS API
+    # ============================================================
+
+    path(
+        "ring/alerts/api/",
+        alerts_views.ring_alerts_api,
+        name="ring_alerts_api",
+    ),
+
+    # ============================================================
+    # SINGLE ALERT
+    # ============================================================
+
+    path(
+        "ring/alerts/<int:alert_id>/",
+        alerts_views.ring_alert_detail,
+        name="ring_alert_detail",
+    ),
+
+    # ============================================================
+    # ALERT LIVE FEED
+    # ============================================================
+
+    path(
+        "ring/alerts/<str:device_id>/live/start/",
+        alerts_views.ring_alert_live_start,
+        name="ring_alert_live_start",
+    ),
+
+    path(
+        "ring/alerts/<str:device_id>/live/stop/",
+        alerts_views.ring_alert_live_stop,
+        name="ring_alert_live_stop",
     ),
 ]

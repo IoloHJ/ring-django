@@ -1,0 +1,392 @@
+{% load static %}
+
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+
+    <meta charset="UTF-8">
+
+    <meta
+        name="viewport"
+        content="width=device-width, initial-scale=1.0"
+    >
+
+    <title>Ring Alerts</title>
+
+    <link
+        rel="preconnect"
+        href="https://fonts.googleapis.com"
+    >
+
+    <link
+        rel="preconnect"
+        href="https://fonts.gstatic.com"
+        crossorigin
+    >
+
+    <link
+        href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=Inter:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&display=swap"
+        rel="stylesheet"
+    >
+
+    <link
+        rel="stylesheet"
+        href="{% static 'css/alerts.css' %}"
+    >
+
+</head>
+
+<body>
+
+    <main class="live-page">
+
+        <!-- =====================================================
+             HEADER
+        ====================================================== -->
+
+        <header class="live-header">
+
+            <div>
+
+                <h1>
+                    Ring Alerts
+                </h1>
+
+                <p>
+                    Monitor Ring alerts and automatically
+                    open the live camera when a new alert
+                    is detected.
+                </p>
+
+            </div>
+
+            <div
+                id="status"
+                class="status status--idle"
+            >
+                <span>
+                    Waiting for alert...
+                </span>
+            </div>
+
+        </header>
+
+
+        <!-- =====================================================
+             MAIN CONTAINER
+        ====================================================== -->
+
+        <div class="live-container">
+
+
+            <!-- =================================================
+                 CONTROLS
+            ================================================== -->
+
+            <section class="controls">
+
+                <div class="control-group">
+
+                    <label>
+                        Current camera
+                    </label>
+
+                    <div
+                        id="currentDevice"
+                        class="current-device"
+                    >
+                        Waiting for alert...
+                    </div>
+
+                </div>
+
+
+                <div class="buttons">
+
+                    <button
+                        id="stopLiveButton"
+                        type="button"
+                    >
+                        Stop Live
+                    </button>
+
+                    <button
+                        id="closeLiveButton"
+                        type="button"
+                    >
+                        Close
+                    </button>
+
+                    <button
+                        id="refreshButton"
+                        type="button"
+                    >
+                        Refresh
+                    </button>
+
+                </div>
+
+            </section>
+
+
+            <!-- =================================================
+                 CAMERA PANEL
+            ================================================== -->
+
+            <section class="camera-panel">
+
+
+                <!-- CAMERA HEADER -->
+
+                <div class="camera-header">
+
+                    <div
+                        id="connectionStatus"
+                        class="camera-status"
+                    >
+                        Waiting for alert...
+                    </div>
+
+
+                    <div
+                        id="liveIndicator"
+                        class="live-indicator live-indicator--idle"
+                    >
+                        STANDBY
+                    </div>
+
+                </div>
+
+
+                <!-- =================================================
+                     VIDEO
+                ================================================== -->
+
+                <div class="video-container">
+
+                    <video
+                        id="liveVideo"
+                        autoplay
+                        playsinline
+                        muted
+                    ></video>
+
+
+                    <!-- =============================================
+                         LOADING
+                    ============================================== -->
+
+                    <div
+                        id="videoLoading"
+                        class="video-loading"
+                        hidden
+                    >
+
+                        <div class="loading-spinner"></div>
+
+                        <span>
+                            Connecting to camera...
+                        </span>
+
+                    </div>
+
+
+                    <!-- =============================================
+                         NO STREAM OVERLAY
+                    ============================================== -->
+
+                    <div
+                        id="noStreamOverlay"
+                        class="no-stream-overlay is-visible"
+                    >
+
+                        <div class="no-stream-icon">
+                            ◉
+                        </div>
+
+                        <h2>
+                            No live stream
+                        </h2>
+
+                        <p>
+                            Waiting for a Ring alert.
+                        </p>
+
+                    </div>
+
+                </div>
+
+            </section>
+
+
+            <!-- =================================================
+                 ACTIVE ALERT
+            ================================================== -->
+
+            <section
+                id="currentAlert"
+                class="current-alert"
+                hidden
+            >
+
+                <div class="current-alert-header">
+
+                    <div>
+
+                        <span class="eyebrow">
+                            ACTIVE ALERT
+                        </span>
+
+                        <h2 id="alertTitle">
+                            Ring Alert
+                        </h2>
+
+                    </div>
+
+                    <div
+                        id="alertType"
+                        class="alert-type"
+                    >
+                        Alert
+                    </div>
+
+                </div>
+
+
+                <div class="current-alert-grid">
+
+                    <div class="alert-detail">
+
+                        <span>
+                            Camera
+                        </span>
+
+                        <strong id="alertDevice">
+                            Ring Camera
+                        </strong>
+
+                    </div>
+
+
+                    <div class="alert-detail">
+
+                        <span>
+                            Time
+                        </span>
+
+                        <strong id="alertTime">
+                            Unknown
+                        </strong>
+
+                    </div>
+
+
+                    <div class="alert-detail">
+
+                        <span>
+                            Message
+                        </span>
+
+                        <strong id="alertMessage">
+                            Ring alert detected.
+                        </strong>
+
+                    </div>
+
+                </div>
+
+            </section>
+
+
+            <!-- =================================================
+                 ALERT LIST
+            ================================================== -->
+
+            <section class="alerts-panel">
+
+                <div class="panel-header">
+
+                    <div>
+
+                        <span class="eyebrow">
+                            EVENTS
+                        </span>
+
+                        <h2>
+                            Recent Alerts
+                        </h2>
+
+                    </div>
+
+                </div>
+
+
+                <div
+                    id="alertsContainer"
+                    class="alerts-list"
+                >
+
+                    <div
+                        id="emptyState"
+                        class="alerts-empty"
+                    >
+
+                        No alerts yet.
+
+                    </div>
+
+                </div>
+
+            </section>
+
+
+            <!-- =================================================
+                 ERROR
+            ================================================== -->
+
+            <section
+                id="errorState"
+                class="error-state"
+                hidden
+            >
+
+                <div class="error-icon">
+                    !
+                </div>
+
+                <div>
+
+                    <h2>
+                        Something went wrong
+                    </h2>
+
+                    <p id="errorMessage">
+                        Unable to load alerts.
+                    </p>
+
+                </div>
+
+                <button
+                    id="errorRetryButton"
+                    type="button"
+                >
+                    Retry
+                </button>
+
+            </section>
+
+
+        </div>
+
+    </main>
+
+
+    <script
+        src="{% static 'js/alerts.js' %}?v=276"
+        defer
+    ></script>
+
+</body>
+
+</html>
