@@ -1,0 +1,154 @@
+{% load static %}
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+    <title>Ring Live</title>
+
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+
+    <link
+        href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@600;700&family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap"
+        rel="stylesheet"
+    >
+
+    <link
+        rel="stylesheet"
+        href="{% static 'css/live.css' %}"
+    >
+</head>
+
+<body>
+
+<div class="live-page">
+
+    <header class="live-header">
+
+        <div>
+            <h1>Ring Live</h1>
+            <p>View a live feed from your Ring devices.</p>
+        </div>
+
+        <div
+            id="status"
+            class="status"
+            role="status"
+            aria-live="polite"
+        >
+            Loading Ring devices...
+        </div>
+
+    </header>
+
+
+    <main class="live-container">
+
+        <section class="controls">
+
+            <div class="control-group">
+
+                <label for="deviceSelect">
+                    Camera
+                </label>
+
+                <select id="deviceSelect">
+                    <option value="">
+                        Loading devices...
+                    </option>
+                </select>
+
+            </div>
+
+
+            <div class="buttons">
+
+                <button
+                    id="startButton"
+                    type="button"
+                    disabled
+                >
+                    Start Live
+                </button>
+
+                <button
+                    id="stopButton"
+                    type="button"
+                    disabled
+                >
+                    Stop
+                </button>
+
+            </div>
+
+        </section>
+
+
+        <section class="camera-panel">
+
+            <div class="camera-header">
+
+                <div>
+                    <span
+                        id="cameraStatus"
+                        class="camera-status"
+                    >
+                        No camera selected
+                    </span>
+                </div>
+
+                <span
+                    id="liveIndicator"
+                    class="live-indicator"
+                    hidden
+                >
+                    LIVE
+                </span>
+
+            </div>
+
+
+            <div class="video-container">
+
+                <video
+                    id="liveVideo"
+                    autoplay
+                    playsinline
+                    muted
+                ></video>
+
+
+                <div
+                    id="noStreamOverlay"
+                    class="no-stream-overlay"
+                >
+
+                    <div class="no-stream-icon">
+                        ◉
+                    </div>
+
+                    <h2>No live stream</h2>
+
+                    <p>
+                        Select a Ring camera and press
+                        <strong>Start Live</strong>.
+                    </p>
+
+                </div>
+
+            </div>
+
+        </section>
+
+    </main>
+
+</div>
+
+
+<script src="{% static 'js/live.js' %}?v=7"></script>
+
+</body>
+</html>

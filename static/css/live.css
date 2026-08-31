@@ -1,0 +1,399 @@
+/* ==========================================================================
+   Ring Live — console theme
+   Palette borrows broadcast tally-light convention (green = ready/preview,
+   red = on air) and camera on-screen-display language (monospace readouts,
+   viewfinder corner brackets) rather than decorative dark-mode defaults.
+   ========================================================================== */
+
+:root {
+    --ink-950: #0a0d10;   /* page background */
+    --ink-900: #12161b;   /* panel background */
+    --ink-850: #05070a;   /* video canvas, deepest */
+    --line: #232a32;
+    --line-strong: #3a4552;
+    --paper: #eef1f4;
+    --mute: #7c8791;
+    --mute-dim: #4b545f;
+
+    --tally-red: #ff4433;    /* on-air / live */
+    --tally-green: #34c78a;  /* ready / preview */
+    --amber: #ffb020;        /* signature accent: viewfinder + primary action */
+
+    --radius: 10px;
+    --radius-lg: 14px;
+}
+
+* {
+    box-sizing: border-box;
+}
+
+body {
+    margin: 0;
+    min-height: 100vh;
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    background: var(--ink-950);
+    color: var(--paper);
+    -webkit-font-smoothing: antialiased;
+}
+
+/* Layout
+   ========================================================================== */
+
+.live-page {
+    width: min(1000px, calc(100% - 40px));
+    margin: 0 auto;
+    padding: 48px 0 70px;
+}
+
+.live-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 24px;
+    margin-bottom: 32px;
+}
+
+.live-header h1 {
+    margin: 0 0 6px;
+    font-family: 'Space Grotesk', sans-serif;
+    font-weight: 700;
+    font-size: clamp(30px, 4.5vw, 44px);
+    letter-spacing: -0.01em;
+    line-height: 1.05;
+}
+
+.live-header p {
+    margin: 0;
+    color: var(--mute);
+    font-size: 15px;
+    max-width: 46ch;
+}
+
+.live-container {
+    display: grid;
+    gap: 20px;
+}
+
+/* Status pill
+   ========================================================================== */
+
+.status {
+    display: flex;
+    align-items: center;
+    gap: 9px;
+    flex-shrink: 0;
+    padding: 8px 14px 8px 10px;
+    border: 1px solid var(--line);
+    border-radius: 999px;
+    background: var(--ink-900);
+    color: var(--mute);
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 12px;
+    letter-spacing: 0.02em;
+    white-space: nowrap;
+}
+
+.status::before {
+    content: "";
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: var(--mute-dim);
+    flex-shrink: 0;
+}
+
+/* State modifiers — add these classes from live.js when the fetch/stream
+   state changes, e.g. statusEl.className = 'status status--ready'; */
+
+.status--ready {
+    color: var(--tally-green);
+    border-color: color-mix(in srgb, var(--tally-green) 35%, var(--line));
+}
+.status--ready::before {
+    background: var(--tally-green);
+}
+
+.status--loading {
+    color: var(--amber);
+}
+.status--loading::before {
+    background: var(--amber);
+    animation: pulse-dot 1.1s ease-in-out infinite;
+}
+
+.status--live {
+    color: var(--tally-red);
+    border-color: color-mix(in srgb, var(--tally-red) 35%, var(--line));
+}
+.status--live::before {
+    background: var(--tally-red);
+    animation: pulse-dot 1.1s ease-in-out infinite;
+}
+
+.status--error {
+    color: var(--tally-red);
+}
+.status--error::before {
+    background: var(--tally-red);
+}
+
+@keyframes pulse-dot {
+    0%, 100% { opacity: 1; transform: scale(1); }
+    50% { opacity: .45; transform: scale(.85); }
+}
+
+/* Controls
+   ========================================================================== */
+
+.controls {
+    display: flex;
+    align-items: flex-end;
+    flex-wrap: wrap;
+    gap: 16px;
+    padding: 18px 20px;
+    border: 1px solid var(--line);
+    border-radius: var(--radius-lg);
+    background: var(--ink-900);
+}
+
+.control-group {
+    flex: 1;
+    min-width: 200px;
+}
+
+.control-group label {
+    display: block;
+    margin-bottom: 8px;
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--mute);
+}
+
+select {
+    width: 100%;
+    padding: 12px 14px;
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    background: var(--ink-950);
+    color: var(--paper);
+    font-family: inherit;
+    font-size: 14px;
+    outline: none;
+    transition: border-color .15s ease;
+}
+
+select:hover {
+    border-color: var(--line-strong);
+}
+
+select:focus-visible {
+    border-color: var(--amber);
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--amber) 25%, transparent);
+}
+
+.buttons {
+    display: flex;
+    gap: 10px;
+}
+
+button {
+    border: 1px solid transparent;
+    border-radius: var(--radius);
+    padding: 12px 20px;
+    font-family: inherit;
+    font-weight: 600;
+    font-size: 14px;
+    cursor: pointer;
+    transition: transform .12s ease, opacity .12s ease, background .15s ease, border-color .15s ease;
+}
+
+button:active {
+    transform: scale(.98);
+}
+
+button:disabled {
+    opacity: .35;
+    cursor: not-allowed;
+    transform: none;
+}
+
+button:focus-visible {
+    outline: 2px solid var(--amber);
+    outline-offset: 2px;
+}
+
+#startButton {
+    background: var(--amber);
+    color: var(--ink-950);
+}
+
+#startButton:hover:not(:disabled) {
+    background: color-mix(in srgb, var(--amber) 88%, white);
+}
+
+#stopButton {
+    background: transparent;
+    border-color: var(--line);
+    color: var(--paper);
+}
+
+#stopButton:hover:not(:disabled) {
+    border-color: var(--line-strong);
+}
+
+/* Camera panel
+   ========================================================================== */
+
+.camera-panel {
+    overflow: hidden;
+    border: 1px solid var(--line);
+    border-radius: var(--radius-lg);
+    background: var(--ink-850);
+}
+
+.camera-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 12px;
+    padding: 14px 18px;
+    border-bottom: 1px solid var(--line);
+    background: var(--ink-900);
+}
+
+.camera-status {
+    font-size: 14px;
+    color: var(--paper);
+    font-weight: 500;
+}
+
+.live-indicator {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 10px;
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--tally-red) 15%, transparent);
+    color: var(--tally-red);
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+}
+
+.live-indicator::before {
+    content: "";
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: var(--tally-red);
+    animation: pulse-dot 1.1s ease-in-out infinite;
+}
+
+.video-container {
+    position: relative;
+    width: 100%;
+    aspect-ratio: 16 / 9;
+    background: var(--ink-850);
+}
+
+/* Signature element: viewfinder corner brackets, built with layered
+   gradients so no extra markup is needed in the template. */
+.video-container::before {
+    content: "";
+    position: absolute;
+    inset: 16px;
+    pointer-events: none;
+    opacity: .5;
+    background:
+        linear-gradient(var(--amber), var(--amber)) top left / 20px 2px no-repeat,
+        linear-gradient(var(--amber), var(--amber)) top left / 2px 20px no-repeat,
+        linear-gradient(var(--amber), var(--amber)) top right / 20px 2px no-repeat,
+        linear-gradient(var(--amber), var(--amber)) top right / 2px 20px no-repeat,
+        linear-gradient(var(--amber), var(--amber)) bottom left / 20px 2px no-repeat,
+        linear-gradient(var(--amber), var(--amber)) bottom left / 2px 20px no-repeat,
+        linear-gradient(var(--amber), var(--amber)) bottom right / 20px 2px no-repeat,
+        linear-gradient(var(--amber), var(--amber)) bottom right / 2px 20px no-repeat;
+}
+
+video {
+    width: 100%;
+    height: 100%;
+    display: block;
+    object-fit: contain;
+    background: var(--ink-850);
+}
+
+.no-stream-overlay {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    text-align: center;
+    color: var(--mute);
+    padding: 20px;
+}
+
+.no-stream-icon {
+    display: grid;
+    place-items: center;
+    width: 56px;
+    height: 56px;
+    margin-bottom: 14px;
+    border: 1px solid var(--line-strong);
+    border-radius: 50%;
+    color: var(--mute);
+    font-size: 22px;
+}
+
+.no-stream-overlay h2 {
+    margin: 0 0 6px;
+    font-family: 'Space Grotesk', sans-serif;
+    font-size: 18px;
+    font-weight: 600;
+    color: var(--paper);
+}
+
+.no-stream-overlay p {
+    margin: 0;
+    font-size: 13px;
+    max-width: 34ch;
+}
+
+.no-stream-overlay strong {
+    color: var(--paper);
+}
+
+/* Accessibility & small screens
+   ========================================================================== */
+
+@media (prefers-reduced-motion: reduce) {
+    .status::before,
+    .live-indicator::before {
+        animation: none;
+    }
+}
+
+@media (max-width: 640px) {
+    .live-page {
+        padding-top: 28px;
+    }
+
+    .live-header {
+        flex-direction: column;
+    }
+
+    .status {
+        align-self: flex-start;
+    }
+
+    .buttons {
+        width: 100%;
+    }
+
+    .buttons button {
+        flex: 1;
+    }
+}

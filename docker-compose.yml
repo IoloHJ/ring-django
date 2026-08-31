@@ -1,0 +1,18 @@
+services:
+
+  ring-django:
+    build: .
+    container_name: ring-django
+    ports:
+      - "8002:8000"
+    env_file:
+      - .env
+    volumes:
+      - .:/app
+
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    container_name: ring-cloudflared
+    command: tunnel --no-autoupdate run --token ${CLOUDFLARE_TUNNEL_TOKEN}
+    depends_on:
+      - ring-django
