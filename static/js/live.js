@@ -12,6 +12,7 @@ document.addEventListener("DOMContentLoaded", function () {
     const deviceSelect = document.getElementById("deviceSelect");
     const startButton = document.getElementById("startButton");
     const stopButton = document.getElementById("stopButton");
+    const soundButton = document.getElementById("soundButton");
     const video = document.getElementById("liveVideo");
     const status = document.getElementById("status");
     const cameraStatus = document.getElementById("cameraStatus");
@@ -22,6 +23,7 @@ document.addEventListener("DOMContentLoaded", function () {
     console.log("deviceSelect:", deviceSelect);
     console.log("startButton:", startButton);
     console.log("stopButton:", stopButton);
+    console.log("soundButton:", soundButton);
     console.log("video:", video);
     console.log("status:", status);
     console.log("cameraStatus:", cameraStatus);
@@ -450,6 +452,33 @@ document.addEventListener("DOMContentLoaded", function () {
     }
 
 
+    if (soundButton) {
+        soundButton.addEventListener(
+            "click",
+            function () {
+                if (!video) {
+                    return;
+                }
+
+                video.muted = !video.muted;
+                video.volume = 1;
+                soundButton.textContent = video.muted
+                    ? "Enable Sound"
+                    : "Mute Sound";
+
+                if (!video.muted) {
+                    video.play().catch(function (error) {
+                        console.warn(
+                            "[RING LIVE] Audio enable failed:",
+                            error
+                        );
+                    });
+                }
+            }
+        );
+    }
+
+
     // ============================================================
     // START LIVE
     // ============================================================
@@ -570,6 +599,14 @@ document.addEventListener("DOMContentLoaded", function () {
 
                     video.play()
                         .then(function () {
+
+                            video.muted = false;
+                            video.volume = 1;
+
+                            if (soundButton) {
+                                soundButton.hidden = false;
+                                soundButton.textContent = "Mute Sound";
+                            }
 
                             console.log(
                                 "[RING LIVE] Video playback started"
@@ -908,7 +945,15 @@ document.addEventListener("DOMContentLoaded", function () {
 
             video.pause();
 
+            video.muted = true;
+
             video.srcObject = null;
+        }
+
+
+        if (soundButton) {
+            soundButton.hidden = true;
+            soundButton.textContent = "Enable Sound";
         }
 
 

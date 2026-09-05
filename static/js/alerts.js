@@ -9,22 +9,15 @@
       ↓
    OPEN ALERT
       ↓
-   SAME PATH AS CLICKING TABLE ROW
+   ALERT VIDEO ENDPOINT
       ↓
-   START LIVE
-      ↓
-   WEBRTC / WHEP
-      ↓
-   ONTRACK
+   STORED RECORDING
       ↓
    VIDEO
 
    IMPORTANT:
    ------------------------------------------------------------
-   The existing table-row -> openAlert() -> startLive() path
-   remains untouched.
-
-   NEW API ALERTS now use that EXACT SAME openAlert() path.
+   Alert rows use openAlert() to load the matching recording.
 
    No History endpoint.
    No alert video endpoint.
@@ -36,7 +29,7 @@ console.log("[ALERTS] alerts.js loaded");
 console.log("[ALERTS] ALERT -> DEVICE -> OPEN ALERT -> LIVE");
 console.log("[ALERTS] WebRTC race protection enabled");
 console.log("[ALERTS] STUN / ICE diagnostics enabled");
-console.log("[ALERTS] API alerts use same path as table-row clicks");
+console.log("[ALERTS] Alert clicks play the associated recording");
 console.log("[ALERTS] DIAGNOSTIC LOGGING ENABLED");
 console.log("====================================");
 
@@ -127,6 +120,9 @@ const closeLiveButton =
 const refreshButton =
     document.getElementById("refreshButton");
 
+const soundButton =
+    document.getElementById("soundButton");
+
 const errorRetryButton =
     document.getElementById("errorRetryButton");
 
@@ -214,6 +210,10 @@ let liveAbortController = null;
  */
 
 let activeAlert = null;
+
+let alertVideoUrl = null;
+
+let liveAutoStopTimer = null;
 
 
 /*
@@ -1454,6 +1454,19 @@ function showBlackVideo() {
     liveVideo.srcObject =
         null;
 
+    if (alertVideoUrl) {
+        URL.revokeObjectURL(alertVideoUrl);
+        alertVideoUrl = null;
+    }
+
+    liveVideo.removeAttribute("src");
+    liveVideo.controls = false;
+
+    if (soundButton) {
+        soundButton.hidden = true;
+        soundButton.textContent = "Enable Sound";
+    }
+
 
     liveVideo.hidden =
         false;
@@ -2142,6 +2155,27 @@ async function safePlayVideo(
         liveActive =
             true;
 
+        liveVideo.muted = false;
+
+        if (soundButton) {
+            soundButton.hidden = false;
+            soundButton.textContent = "Mute Sound";
+        }
+
+        if (liveAutoStopTimer) {
+            clearTimeout(liveAutoStopTimer);
+        }
+
+        liveAutoStopTimer = setTimeout(
+            function() {
+                if (liveActive) {
+                    log("[ALERT LIVE] 60-second limit reached; stopping live.");
+                    stopLive(true);
+                }
+            },
+            60 * 1000
+        );
+
 
         if (noStreamOverlay) {
 
@@ -2638,6 +2672,84 @@ function renderActiveAlert(
 
     }
 
+}
+
+
+async function playAlertVideo(alert) {
+    if (!alert || !getAlertId(alert)) {
+        return;
+    }
+
+    if (!liveVideo) {
+        return;
+    }
+
+    const endpoint =
+        "/ring/alerts/" +
+        encodeURIComponent(getAlertId(alert)) +
+        "/video/";
+
+    showBlackVideo();
+    liveVideo.controls = true;
+    liveVideo.muted = false;
+    showVideoConnecting();
+    setStatus("Loading alert recording...", "loading");
+
+    try {
+        const response = await fetch(endpoint, {
+            method: "GET",
+            headers: {"Accept": "video/mp4,video/*,*/*"},
+            credentials: "same-origin",
+            cache: "no-store"
+        });
+
+        if (!response.ok) {
+            let message = "Alert recording unavailable.";
+
+            try {
+                const data = await response.json();
+                message = data.message || data.details || data.error || message;
+            } catch (error) {
+                // Keep the generic message when the response is not JSON.
+            }
+
+            throw new Error(message);
+        }
+
+        const blob = await response.blob();
+
+        if (!blob.size || (blob.type && blob.type.includes("application/json"))) {
+            throw new Error("Ring returned no playable alert recording.");
+        }
+
+        alertVideoUrl = URL.createObjectURL(blob);
+        liveVideo.srcObject = null;
+        liveVideo.src = alertVideoUrl;
+        liveVideo.hidden = false;
+        liveVideo.controls = true;
+        liveVideo.muted = false;
+
+        if (noStreamOverlay) {
+            noStreamOverlay.hidden = true;
+            noStreamOverlay.style.display = "none";
+        }
+
+        if (videoLoading) {
+            videoLoading.hidden = true;
+            videoLoading.style.display = "none";
+        }
+
+        setStatus("Playing alert recording", "ready");
+
+        try {
+            await liveVideo.play();
+        } catch (error) {
+            log("Alert recording loaded; press play to start.");
+        }
+    } catch (error) {
+        showBlackVideo();
+        setStatus(error.message || "Unable to load alert recording.", "error");
+    }
 }
 
 
@@ -3242,7 +3354,7 @@ async function detectNewAlert(
     );
 
     log(
-        "[ALERTS] IMPORTANT: Opening alert using SAME openAlert() path as table click."
+        "[ALERTS] Genuine new alert will replace playback with live."
     );
 
     log(
@@ -3441,26 +3553,12 @@ async function handleNewAlert(
      * IMPORTANT FIX
      * --------------------------------------------------------
      *
-     * DO NOT call startLive() directly here.
-     *
-     * Clicking a table row already works because it does:
-     *
-     *     openAlert(selected)
-     *
-     * Therefore the API path now does EXACTLY the same:
-     *
-     *     API alert
-     *          ↓
-     *     openAlert(alert)
-     *          ↓
-     *     startLive()
-     *
-     * This prevents the automatic API path from behaving
-     * differently from the working manual row-click path.
+     * A newly detected alert is different from a past alert click:
+     * stop any recording playback and open the live camera.
      */
 
     log(
-        "[ALERTS] API alert -> openAlert()"
+        "[ALERTS] New API alert -> live camera"
     );
 
 
@@ -3485,7 +3583,7 @@ async function handleNewAlert(
 
 
     console.log(
-        "[DEBUG][HANDLE] ABOUT TO CALL openAlert(alert)."
+        "[DEBUG][HANDLE] ABOUT TO CALL startLive(alert)."
     );
 
     console.log(
@@ -3505,18 +3603,20 @@ async function handleNewAlert(
 
 
     /*
-     * THIS IS THE KEY CHANGE.
-     *
-     * Use the exact same function as a table-row click.
+     * A new alert supersedes a past-alert recording currently on screen.
      */
 
-    await openAlert(
+    showBlackVideo();
+
+    await startLive(
+        deviceId,
+        deviceName,
         alert
     );
 
 
     console.log(
-        "[DEBUG][HANDLE] openAlert(alert) completed."
+        "[DEBUG][HANDLE] startLive(alert) completed."
     );
 
 }
@@ -5493,6 +5593,11 @@ async function stopLive(
     stopInProgress =
         true;
 
+    if (liveAutoStopTimer) {
+        clearTimeout(liveAutoStopTimer);
+        liveAutoStopTimer = null;
+    }
+
 
     clearVideoPlayRetry();
 
@@ -5967,9 +6072,7 @@ async function openAlert(
 
 
     /*
-     * EXISTING LIVE PATH.
-     *
-     * DO NOT CHANGE THIS.
+     * Play the recording associated with this alert.
      */
 
     console.log(
@@ -5977,21 +6080,11 @@ async function openAlert(
     );
 
     console.log(
-        "[DEBUG][OPEN ALERT] ABOUT TO CALL startLive()"
+        "[DEBUG][OPEN ALERT] ABOUT TO PLAY ALERT VIDEO"
     );
 
     console.log(
-        "[DEBUG][OPEN ALERT] startLive deviceId:",
-        deviceId
-    );
-
-    console.log(
-        "[DEBUG][OPEN ALERT] startLive deviceName:",
-        deviceName
-    );
-
-    console.log(
-        "[DEBUG][OPEN ALERT] startLive alert:",
+        "[DEBUG][OPEN ALERT] alert:",
         alert
     );
 
@@ -6000,15 +6093,11 @@ async function openAlert(
     );
 
 
-    await startLive(
-        deviceId,
-        deviceName,
-        alert
-    );
+    await playAlertVideo(alert);
 
 
     console.log(
-        "[DEBUG][OPEN ALERT] startLive() returned."
+        "[DEBUG][OPEN ALERT] Alert video playback returned."
     );
 
 }
@@ -6036,6 +6125,35 @@ if (
         }
     );
 
+}
+
+
+if (soundButton) {
+    soundButton.addEventListener(
+        "click",
+        async function(event) {
+            event.preventDefault();
+
+            if (!liveVideo) {
+                return;
+            }
+
+            if (liveVideo.muted) {
+                liveVideo.muted = false;
+                liveVideo.volume = 1;
+                soundButton.textContent = "Mute Sound";
+
+                try {
+                    await liveVideo.play();
+                } catch (error) {
+                    console.warn("[ALERT LIVE] Audio enable failed:", error);
+                }
+            } else {
+                liveVideo.muted = true;
+                soundButton.textContent = "Enable Sound";
+            }
+        }
+    );
 }
 
 

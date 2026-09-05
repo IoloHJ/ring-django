@@ -1,0 +1,24 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}Ring Security{% endblock %}</title>
+    <link rel="stylesheet" href="{% static 'css/base.css' %}?v=1">
+    {% block extra_head %}{% endblock %}
+</head>
+<body>
+    <nav class="site-nav" aria-label="Primary navigation">
+        <a class="site-nav__brand" href="/ring/alerts/">Ring Security</a>
+        <div class="site-nav__links">
+            <a href="/ring/alerts/">Alerts</a>
+            <a href="/ring/live/">Live</a>
+            <a href="/ring/history/">History</a>
+        </div>
+    </nav>
+
+    {% block content %}{% endblock %}
+    {% block extra_scripts %}{% endblock %}
+</body>
+</html>

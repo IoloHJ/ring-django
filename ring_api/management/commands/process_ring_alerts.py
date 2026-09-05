@@ -1,12 +1,34 @@
-from datetime import datetime, timezone
+import requests
 
+from django.conf import settings
 from django.core.management.base import BaseCommand
 
-from ring_api.models import RingWebhookEvent, RingAlert
+from ring_api.alert_processing import (
+    create_alert_from_history_event,
+    create_alert_from_payload,
+)
+from ring_api.models import RingAlert, RingToken, RingWebhookEvent
 
 
 class Command(BaseCommand):
-    help = "Process Ring webhook events into Ring alerts."
+    help = "Process webhook events and optionally backfill Ring history alerts."
+
+    def add_arguments(self, parser):
+        parser.add_argument(
+            "--backfill",
+            action="store_true",
+            help="Import alert metadata from Ring history; no videos are downloaded.",
+        )
+        parser.add_argument(
+            "--device-id",
+            help="Backfill only this Ring device when --backfill is used.",
+        )
+        parser.add_argument(
+            "--limit",
+            type=int,
+            default=100,
+            help="Maximum history events to import per device (default: 100).",
+        )
 
     def handle(self, *args, **options):
 
@@ -27,12 +49,6 @@ class Command(BaseCommand):
             # ========================================================
 
             data = payload.get("data") or {}
-            attributes = data.get("attributes") or {}
-
-            # ========================================================
-            # EVENT ID
-            # ========================================================
-
             event_id = data.get("id")
 
             if not event_id:
@@ -49,130 +65,10 @@ class Command(BaseCommand):
                 continue
 
             # ========================================================
-            # EVENT TYPE
-            # ========================================================
-
-            event_type = data.get(
-                "type",
-                "unknown",
-            )
-
-            # ========================================================
-            # SUB TYPE
-            #
-            # Ring sends:
-            #
-            # human
-            # vehicle
-            # other_motion
-            #
-            # RingAlert doesn't currently have a sub_type column,
-            # so we use it to determine the human-readable message.
-            # The complete original value remains in payload.
-            # ========================================================
-
-            sub_type = attributes.get(
-                "sub_type",
-                "",
-            )
-
-            # ========================================================
-            # DEVICE
-            # ========================================================
-
-            device_id = attributes.get(
-                "source",
-                "",
-            )
-
-            # ========================================================
-            # MESSAGE
-            # ========================================================
-
-            if event_type == "motion_detected":
-
-                if sub_type == "human":
-
-                    message = "Person detected"
-
-                elif sub_type == "vehicle":
-
-                    message = "Vehicle detected"
-
-                elif sub_type == "other_motion":
-
-                    message = "Motion detected"
-
-                else:
-
-                    message = "Motion detected"
-
-            else:
-
-                message = (
-                    event_type
-                    .replace("_", " ")
-                    .capitalize()
-                )
-
-            # ========================================================
-            # TIMESTAMP
-            # ========================================================
-
-            timestamp = None
-
-            timestamp_ms = attributes.get(
-                "timestamp"
-            )
-
-            if timestamp_ms:
-
-                try:
-
-                    timestamp = datetime.fromtimestamp(
-                        int(timestamp_ms) / 1000,
-                        tz=timezone.utc,
-                    )
-
-                except (
-                    TypeError,
-                    ValueError,
-                    OverflowError,
-                ):
-
-                    self.stdout.write(
-                        self.style.WARNING(
-                            f"Invalid timestamp for "
-                            f"event {event_id}"
-                        )
-                    )
-
-            # ========================================================
-            # DEVICE NAME
-            #
-            # We'll populate this properly from Ring device
-            # discovery once the basic alert pipeline is confirmed.
-            # ========================================================
-
-            device_name = "Unknown Device"
-
-            # ========================================================
             # CREATE ALERT
             # ========================================================
 
-            alert, was_created = (
-                RingAlert.objects.get_or_create(
-                    event_id=event_id,
-                    defaults={
-                        "device_id": device_id,
-                        "device_name": device_name,
-                        "event_type": event_type,
-                        "message": message,
-                        "timestamp": timestamp,
-                        "payload": payload,
-                    },
-                )
-            )
+            alert, was_created = create_alert_from_payload(payload)
 
             if was_created:
 
@@ -181,9 +77,8 @@ class Command(BaseCommand):
                 self.stdout.write(
                     self.style.SUCCESS(
                         f"Created alert #{alert.id}: "
-                        f"{message} | "
-                        f"{sub_type or 'unknown'} | "
-                        f"{device_id}"
+                        f"{alert.message} | "
+                        f"{alert.device_id}"
                     )
                 )
 
@@ -192,6 +87,14 @@ class Command(BaseCommand):
                 self.stdout.write(
                     f"Already processed: {event_id}"
                 )
+
+        if options["backfill"]:
+            created, skipped = self.backfill_history(
+                options["device_id"],
+                options["limit"],
+                created,
+                skipped,
+            )
 
         # ============================================================
         # SUMMARY
@@ -204,3 +107,96 @@ class Command(BaseCommand):
                 f"Skipped: {skipped}"
             )
         )
+
+    def backfill_history(self, selected_device_id, limit, created, skipped):
+        token = RingToken.objects.order_by("-updated_at").first()
+
+        if not token or not token.access_token:
+            self.stdout.write(
+                self.style.ERROR("No Ring access token is available for backfill.")
+            )
+            return created, skipped
+
+        base_url = settings.RING_API_BASE.rstrip("/")
+        headers = {
+            "Authorization": f"Bearer {token.access_token}",
+            "Accept": "application/vnd.api+json",
+        }
+
+        try:
+            response = requests.get(
+                f"{base_url}/v1/devices",
+                headers=headers,
+                timeout=60,
+            )
+            response.raise_for_status()
+            devices = response.json().get("data", [])
+        except (requests.RequestException, ValueError) as exc:
+            self.stdout.write(
+                self.style.ERROR(f"Unable to load Ring devices: {exc}")
+            )
+            return created, skipped
+
+        if selected_device_id:
+            devices = [
+                device for device in devices
+                if str(device.get("id")) == str(selected_device_id)
+            ]
+
+        for device in devices:
+            device_id = device.get("id")
+            if not device_id:
+                continue
+
+            attributes = device.get("attributes") or {}
+            device_name = (
+                attributes.get("description")
+                or attributes.get("name")
+                or attributes.get("device_name")
+                or "Unknown Device"
+            )
+            RingAlert.objects.filter(
+                device_id=str(device_id),
+                device_name="Unknown Device",
+            ).update(device_name=device_name)
+            events_url = (
+                f"{base_url}/v1/history/devices/"
+                f"{device_id}/events"
+            )
+
+            try:
+                response = requests.get(
+                    events_url,
+                    headers=headers,
+                    params={"page[limit]": limit},
+                    timeout=60,
+                )
+                response.raise_for_status()
+                events = response.json().get("data", [])
+            except (requests.RequestException, ValueError) as exc:
+                self.stdout.write(
+                    self.style.WARNING(
+                        f"Unable to load history for {device_id}: {exc}"
+                    )
+                )
+                continue
+
+            for event in events[:limit]:
+                alert, was_created = create_alert_from_history_event(
+                    event,
+                    device_id,
+                    device_name,
+                )
+
+                if not alert:
+                    skipped += 1
+                elif was_created:
+                    created += 1
+                    self.stdout.write(
+                        self.style.SUCCESS(
+                            f"Backfilled alert #{alert.id}: "
+                            f"{alert.message} | {alert.device_id}"
+                        )
+                    )
+
+        return created, skipped

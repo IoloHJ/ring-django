@@ -1,19 +1,9 @@
+{% extends "base.html" %}
 {% load static %}
 
-<!DOCTYPE html>
-<html lang="en">
+{% block title %}Ring Alerts{% endblock %}
 
-<head>
-
-    <meta charset="UTF-8">
-
-    <meta
-        name="viewport"
-        content="width=device-width, initial-scale=1.0"
-    >
-
-    <title>Ring Alerts</title>
-
+{% block extra_head %}
     <link
         rel="preconnect"
         href="https://fonts.googleapis.com"
@@ -35,9 +25,9 @@
         href="{% static 'css/alerts.css' %}"
     >
 
-</head>
+{% endblock %}
 
-<body>
+{% block content %}
 
     <main class="live-page">
 
@@ -108,14 +98,14 @@
                         id="stopLiveButton"
                         type="button"
                     >
-                        Stop Live
+                        Stop Playback
                     </button>
 
                     <button
                         id="closeLiveButton"
                         type="button"
                     >
-                        Close
+                        Close Recording
                     </button>
 
                     <button
@@ -123,6 +113,14 @@
                         type="button"
                     >
                         Refresh
+                    </button>
+
+                    <button
+                        id="soundButton"
+                        type="button"
+                        hidden
+                    >
+                        Enable Sound
                     </button>
 
                 </div>
@@ -382,11 +380,11 @@
     </main>
 
 
+{% endblock %}
+
+{% block extra_scripts %}
     <script
-        src="{% static 'js/alerts.js' %}?v=276"
+        src="{% static 'js/alerts.js' %}?v=283"
         defer
     ></script>
-
-</body>
-
-</html>
+{% endblock %}

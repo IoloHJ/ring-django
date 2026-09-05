@@ -18,3 +18,5 @@ staticfiles/
 .idea/
 
 *.log
+
+*engineering.md

@@ -9,6 +9,7 @@ from django.shortcuts import render
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_GET
 
+from .alert_processing import parse_ring_timestamp
 from .models import RingAlert, RingToken
 
 
@@ -101,6 +102,59 @@ def serialise_alert(alert):
     }
 
 
+def populate_alert_device_names(alerts):
+    """Fill missing alert names from the linked Ring device list."""
+    missing_alerts = [
+        alert
+        for alert in alerts
+        if alert.device_id
+        and alert.device_name in ("", "Unknown Device")
+    ]
+
+    if not missing_alerts:
+        return
+
+    token = get_latest_ring_token()
+    if not token or not token.access_token:
+        return
+
+    try:
+        response = requests.get(
+            f"{settings.RING_API_BASE.rstrip('/')}/v1/devices",
+            headers={
+                "Authorization": f"Bearer {token.access_token}",
+                "Accept": "application/vnd.api+json",
+            },
+            timeout=10,
+        )
+        response.raise_for_status()
+        devices = response.json().get("data", [])
+    except (requests.RequestException, ValueError) as exc:
+        logger.warning("[ALERTS] Unable to load device names: %s", exc)
+        return
+
+    names = {}
+    for device in devices:
+        device_id = device.get("id")
+        attributes = device.get("attributes") or {}
+        name = (
+            attributes.get("description")
+            or attributes.get("name")
+            or attributes.get("device_name")
+            or attributes.get("nickname")
+        )
+        if device_id and name:
+            names[str(device_id)] = str(name)
+
+    for alert in missing_alerts:
+        name = names.get(str(alert.device_id))
+        if not name:
+            continue
+
+        alert.device_name = name
+        alert.save(update_fields=["device_name"])
+
+
 # ============================================================
 # ALERTS PAGE
 # ============================================================
@@ -138,9 +192,12 @@ def ring_alerts_api(request):
 
         alerts = (
             RingAlert.objects
-            .order_by("-created_at")
+            .order_by("-timestamp", "-created_at")
             [:50]
         )
+
+        alerts = list(alerts)
+        populate_alert_device_names(alerts)
 
         results = [
             serialise_alert(alert)
@@ -168,6 +225,105 @@ def ring_alerts_api(request):
             },
             status=500,
         )
+
+
+@require_GET
+def ring_alert_video(request, alert_id):
+    """Return the Ring recording associated with a stored alert."""
+    try:
+        alert = RingAlert.objects.get(id=alert_id)
+    except RingAlert.DoesNotExist:
+        return JsonResponse(
+            {"error": "alert_not_found"},
+            status=404,
+        )
+
+    if not alert.device_id or not alert.timestamp:
+        return JsonResponse(
+            {
+                "error": "alert_video_unavailable",
+                "message": "This alert has no recording timestamp or device.",
+            },
+            status=404,
+        )
+
+    event = (alert.payload or {}).get("event") or {}
+    attributes = event.get("attributes") or {}
+    end = parse_ring_timestamp(attributes.get("end"))
+    duration_ms = 60_000
+
+    if end and end > alert.timestamp:
+        duration_ms = int(
+            (end - alert.timestamp).total_seconds() * 1000
+        )
+
+    duration_ms = min(max(duration_ms, 1_000), 15 * 60 * 1000)
+    start_timestamp = int(alert.timestamp.timestamp() * 1000)
+    url = (
+        f"{settings.RING_API_BASE.rstrip('/')}/v1/devices/"
+        f"{alert.device_id}/media/video/download"
+    )
+    payload = {
+        "timestamp": start_timestamp,
+        "duration": duration_ms,
+        "video_options": {
+            "codec": "avc",
+            "frame_rate": 25,
+            "resolution": {"width": 1920, "height": 1080},
+        },
+        "audio_options": {"audio_enabled": True},
+    }
+
+    try:
+        response = requests.post(
+            url,
+            headers={
+                "Authorization": f"Bearer {get_ring_access_token()}",
+                "Content-Type": "application/json",
+                "Accept": "video/mp4",
+            },
+            json=payload,
+            timeout=120,
+        )
+    except (requests.RequestException, RuntimeError) as exc:
+        logger.exception("[ALERT VIDEO] Ring media request failed")
+        return JsonResponse(
+            {
+                "error": "ring_alert_video_request_failed",
+                "details": str(exc),
+            },
+            status=502,
+        )
+
+    if response.status_code not in (200, 206):
+        return JsonResponse(
+            {
+                "error": "ring_alert_video_api_error",
+                "status_code": response.status_code,
+                "details": response.text[:3000],
+            },
+            status=response.status_code,
+        )
+
+    video_response = HttpResponse(
+        response.content,
+        content_type=response.headers.get("Content-Type", "video/mp4"),
+        status=response.status_code,
+    )
+    video_response["Accept-Ranges"] = "bytes"
+
+    for header_name in (
+        "Content-Length",
+        "Content-Range",
+        "X-Media-Length",
+        "X-Media-Duration",
+        "X-Request-ID",
+    ):
+        value = response.headers.get(header_name)
+        if value:
+            video_response[header_name] = value
+
+    return video_response
 
 
 # ============================================================

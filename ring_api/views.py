@@ -25,6 +25,7 @@ from django.views.decorators.http import require_GET
 from django.conf import settings
 
 from .models import RingToken, RingWebhookEvent
+from .alert_processing import create_alert_from_payload
 
 
 logger = logging.getLogger(__name__)
@@ -1352,6 +1353,19 @@ def ring_webhook(request):
             "payload": payload,
         },
     )
+
+    alert, alert_created = create_alert_from_payload(payload)
+
+    if alert_created:
+        logger.info(
+            "Ring alert created: %s",
+            alert.event_id,
+        )
+    elif alert is None:
+        logger.warning(
+            "Ring webhook has no alert event ID: %s",
+            request_id,
+        )
 
     logger.info(
         "Ring webhook stored: %s",

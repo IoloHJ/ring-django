@@ -10,6 +10,21 @@ services:
     volumes:
       - .:/app
 
+  ring-token-refresh:
+    build: .
+    container_name: ring-token-refresh
+    env_file:
+      - .env
+    volumes:
+      - .:/app
+    command: >-
+      sh -c "while true; do
+      python manage.py refresh_ring_token || true;
+      sleep 240;
+      done"
+    depends_on:
+      - ring-django
+
   cloudflared:
     image: cloudflare/cloudflared:latest
     container_name: ring-cloudflared

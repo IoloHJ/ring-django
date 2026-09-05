@@ -1,13 +1,9 @@
+{% extends "base.html" %}
 {% load static %}
 
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+{% block title %}Ring Live{% endblock %}
 
-    <title>Ring Live</title>
-
+{% block extra_head %}
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 
@@ -20,9 +16,9 @@
         rel="stylesheet"
         href="{% static 'css/live.css' %}"
     >
-</head>
+{% endblock %}
 
-<body>
+{% block content %}
 
 <div class="live-page">
 
@@ -80,6 +76,14 @@
                     disabled
                 >
                     Stop
+                </button>
+
+                <button
+                    id="soundButton"
+                    type="button"
+                    hidden
+                >
+                    Enable Sound
                 </button>
 
             </div>
@@ -148,7 +152,8 @@
 </div>
 
 
-<script src="{% static 'js/live.js' %}?v=7"></script>
+{% endblock %}
 
-</body>
-</html>
+{% block extra_scripts %}
+<script src="{% static 'js/live.js' %}?v=8"></script>
+{% endblock %}

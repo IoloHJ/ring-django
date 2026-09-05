@@ -130,6 +130,12 @@ urlpatterns = [
         name="ring_alerts_api",
     ),
 
+    path(
+        "ring/alerts/<int:alert_id>/video/",
+        alerts_views.ring_alert_video,
+        name="ring_alert_video",
+    ),
+
     # ============================================================
     # SINGLE ALERT
     # ============================================================
