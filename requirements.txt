@@ -13,4 +13,9 @@ urllib3==2.6.3
 requests
 python-dotenv
 whitenoise
+PyJWT
+cryptography
+httpx[http2]
+pyotp
+qrcode[pil]
 whitenoise

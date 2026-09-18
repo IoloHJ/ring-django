@@ -1,0 +1,15 @@
+{% extends "base.html" %}
+{% block title %}Verify 2FA | Ring Security{% endblock %}
+{% block content %}
+<main class="security-card">
+    <p class="security-eyebrow">TWO-FACTOR AUTHENTICATION</p>
+    <h1>Verify your sign-in</h1>
+    {% if error %}<p class="security-error">{{ error }}</p>{% endif %}
+    <form method="post">
+        {% csrf_token %}
+        <label for="code">Google Authenticator code</label>
+        <input id="code" name="code" inputmode="numeric" pattern="[0-9 ]{6,7}" autocomplete="one-time-code" required autofocus>
+        <button type="submit">Sign in</button>
+    </form>
+</main>
+{% endblock %}

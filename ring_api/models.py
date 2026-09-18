@@ -142,3 +142,30 @@ class RingAlert(models.Model):
             f"{self.device_name} - "
             f"{self.event_type}"
         )
+
+
+class MobilePushDevice(models.Model):
+    PROVIDER_CHOICES = (
+        ("apns", "Apple Push Notification service"),
+        ("adm", "Amazon Device Messaging"),
+    )
+
+    provider = models.CharField(max_length=10, choices=PROVIDER_CHOICES)
+    token = models.TextField(unique=True)
+    installation = models.ForeignKey(
+        "security.AppInstallation",
+        null=True,
+        blank=True,
+        on_delete=models.CASCADE,
+        related_name="push_devices",
+    )
+    platform = models.CharField(max_length=20, blank=True, default="")
+    active = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["-updated_at"]
+
+    def __str__(self):
+        return f"{self.provider}:{self.platform}:{self.token[:12]}"

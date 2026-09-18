@@ -161,4 +161,32 @@ urlpatterns = [
         alerts_views.ring_alert_live_stop,
         name="ring_alert_live_stop",
     ),
+
+    # ============================================================
+    # MOBILE INSTALLS
+    # ============================================================
+
+    path(
+        "ring/mobile/install/",
+        alerts_views.ring_mobile_install,
+        name="ring_mobile_install",
+    ),
+
+    path(
+        "ring/mobile/<str:platform>/<str:version>/download/",
+        alerts_views.ring_mobile_download,
+        name="ring_mobile_download",
+    ),
+
+    path(
+        "ring/mobile/ios/<str:version>/manifest.plist",
+        alerts_views.ring_mobile_ios_manifest,
+        name="ring_mobile_ios_manifest",
+    ),
+
+    path(
+        "ring/mobile/push/register/",
+        alerts_views.ring_mobile_push_register,
+        name="ring_mobile_push_register",
+    ),
 ]

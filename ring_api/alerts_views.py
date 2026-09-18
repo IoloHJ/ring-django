@@ -1,19 +1,26 @@
 import json
 import logging
+import re
+from html import escape
+from pathlib import Path
 
 import requests
 
 from django.conf import settings
-from django.http import HttpResponse, JsonResponse
+from django.contrib.auth.decorators import login_required
+from django.http import FileResponse, HttpResponse, JsonResponse
 from django.shortcuts import render
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_GET
 
 from .alert_processing import parse_ring_timestamp
-from .models import RingAlert, RingToken
+from .models import MobilePushDevice, RingAlert, RingToken
+from security.services import app_installation_from_request
 
 
 logger = logging.getLogger(__name__)
+
+MOBILE_VERSION_PATTERN = re.compile(r"^[A-Za-z0-9._-]+$")
 
 
 # ============================================================
@@ -37,6 +44,132 @@ def get_ring_access_token():
         )
 
     return token.access_token
+
+
+def mobile_releases():
+    """Return configured releases with safe, basename-only artifact names."""
+    releases = []
+    for release in getattr(settings, "RING_MOBILE_RELEASES", []):
+        version = str(release.get("version", ""))
+        if not MOBILE_VERSION_PATTERN.fullmatch(version):
+            continue
+        releases.append({
+            "version": version,
+            "android": Path(str(release.get("android", ""))).name,
+            "ios": Path(str(release.get("ios", ""))).name,
+        })
+    return releases
+
+
+def configured_mobile_release(version):
+    return next(
+        (
+            release
+            for release in mobile_releases()
+            if release["version"] == version
+        ),
+        None,
+    )
+
+
+def mobile_artifact_path(platform, version):
+    release = configured_mobile_release(version)
+    if not release or platform not in ("android", "ios"):
+        return None
+
+    filename = release[platform]
+    if not filename:
+        return None
+
+    release_dir = Path(settings.RING_MOBILE_RELEASE_DIR).resolve()
+    artifact = (release_dir / filename).resolve()
+    if artifact.parent != release_dir:
+        return None
+    return artifact
+
+
+def ring_mobile_install(request):
+    return render(
+        request,
+        "mobile_install.html",
+        {"releases": mobile_releases()},
+    )
+
+
+def ring_mobile_download(request, platform, version):
+    artifact = mobile_artifact_path(platform, version)
+    if not artifact or not artifact.is_file():
+        return JsonResponse({"error": "mobile_release_not_found"}, status=404)
+
+    content_type = (
+        "application/vnd.android.package-archive"
+        if platform == "android"
+        else "application/octet-stream"
+    )
+    return FileResponse(
+        artifact.open("rb"),
+        as_attachment=True,
+        filename=artifact.name,
+        content_type=content_type,
+    )
+
+
+def ring_mobile_ios_manifest(request, version):
+    release = configured_mobile_release(version)
+    artifact = mobile_artifact_path("ios", version)
+    if not release or not artifact:
+        return HttpResponse("Release not found", status=404)
+
+    ipa_url = request.build_absolute_uri(
+        f"/ring/mobile/ios/{version}/download/"
+    )
+    bundle_id = escape(settings.RING_MOBILE_IOS_BUNDLE_ID)
+    version_text = escape(version)
+    manifest = f"""<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0"><dict>
+<key>items</key><array><dict><key>assets</key><array><dict>
+<key>kind</key><string>software-package</string>
+<key>url</key><string>{escape(ipa_url)}</string>
+</dict></array><key>metadata</key><dict>
+<key>bundle-identifier</key><string>{bundle_id}</string>
+<key>bundle-version</key><string>{version_text}</string>
+<key>kind</key><string>software</string>
+<key>title</key><string>Ring Alert Viewer</string>
+</dict></dict></array></dict></plist>"""
+    return HttpResponse(manifest, content_type="application/xml")
+
+
+@csrf_exempt
+def ring_mobile_push_register(request):
+    if request.method != "POST":
+        return JsonResponse({"error": "POST required"}, status=405)
+
+    try:
+        body = json.loads(request.body.decode("utf-8"))
+    except (UnicodeDecodeError, json.JSONDecodeError):
+        return JsonResponse({"error": "invalid_json"}, status=400)
+
+    provider = str(body.get("provider", ""))
+    token = str(body.get("token", "")).strip()
+    platform = str(body.get("platform", "")).strip()
+    if provider not in ("apns", "adm") or not token:
+        return JsonResponse({"error": "provider_and_token_required"}, status=400)
+
+    installation = app_installation_from_request(request)
+    if not installation:
+        return JsonResponse({"error": "invalid_app_token"}, status=401)
+
+    device, _ = MobilePushDevice.objects.update_or_create(
+        token=token,
+        defaults={
+            "provider": provider,
+            "platform": platform,
+            "active": True,
+            "installation": installation,
+        },
+    )
+    return JsonResponse({"registered": True, "id": device.id})
 
 
 def alert_device_name(alert):
@@ -159,6 +292,7 @@ def populate_alert_device_names(alerts):
 # ALERTS PAGE
 # ============================================================
 
+@login_required
 def ring_alerts_page(request):
     """
     Completely standalone Alerts page.

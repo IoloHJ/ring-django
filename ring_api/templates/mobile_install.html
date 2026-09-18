@@ -1,0 +1,37 @@
+{% extends "base.html" %}
+
+{% block title %}Ring Alert Viewer Installs{% endblock %}
+
+{% block content %}
+<main class="mobile-install">
+    <p class="mobile-install__eyebrow">RING ALERT VIEWER</p>
+    <h1>Install a test build</h1>
+    <p class="mobile-install__intro">Select a version for the device you are using.</p>
+
+    {% if releases %}
+        {% for release in releases %}
+            <section class="mobile-install__release">
+                <h2>Version {{ release.version }}</h2>
+                {% if release.android %}
+                    <a class="mobile-install__button" href="{% url 'ring_mobile_download' 'android' release.version %}">Download Android / Fire TV APK</a>
+                {% endif %}
+                {% if release.ios %}
+                    <a class="mobile-install__button mobile-install__button--secondary" href="itms-services://?action=download-manifest&url={{ request.scheme }}://{{ request.get_host }}{% url 'ring_mobile_ios_manifest' release.version %}">Install on iPhone / iPad</a>
+                {% else %}
+                    <span class="mobile-install__button mobile-install__button--disabled">iPhone / iPad requires Ad Hoc signing</span>
+                {% endif %}
+            </section>
+        {% endfor %}
+    {% else %}
+        <p>No mobile releases are configured yet.</p>
+    {% endif %}
+
+    <section class="mobile-install__instructions">
+        <h2>Android / Fire TV permission</h2>
+        <p>Android may block the APK the first time. Allow the app you used to download it to install unknown apps, then open the downloaded APK again.</p>
+        <p><strong>Android:</strong> Settings &gt; Apps &gt; Special app access &gt; Install unknown apps, then enable your browser or Files app.</p>
+        <p><strong>Fire TV:</strong> Settings &gt; My Fire TV &gt; Developer Options &gt; Install unknown apps, then allow the Downloader or file manager app.</p>
+        <p><strong>iPhone / iPad:</strong> the IPA must be signed for the device and this page must be served over HTTPS.</p>
+    </section>
+</main>
+{% endblock %}

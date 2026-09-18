@@ -7,6 +7,9 @@ services:
       - "8002:8000"
     env_file:
       - .env
+    environment:
+      RING_MOBILE_RELEASES: >-
+        [{"version":"0.0.1","android":"ring-alert-viewer-0.0.1.apk","ios":""}]
     volumes:
       - .:/app
 

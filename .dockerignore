@@ -16,3 +16,11 @@ db.sqlite3
 staticfiles
 
 .DS_Store
+
+apps/ring-alert-viewer/node_modules
+apps/ring-alert-viewer/android/.gradle
+apps/ring-alert-viewer/android/build
+apps/ring-alert-viewer/android/app/build
+apps/ring-alert-viewer/ios/Pods
+apps/ring-alert-viewer/ios/build
+apps/ring-alert-viewer/vendor

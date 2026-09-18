@@ -10,6 +10,7 @@ For the full list of settings and their values, see
 https://docs.djangoproject.com/en/4.2/ref/settings/
 """
 
+import json
 import os
 from pathlib import Path
 
@@ -99,6 +100,7 @@ INSTALLED_APPS = [
     "django.contrib.staticfiles",
 
     "ring_api",
+    "security",
 ]
 
 MIDDLEWARE = [
@@ -108,6 +110,7 @@ MIDDLEWARE = [
     "django.middleware.common.CommonMiddleware",
     "django.middleware.csrf.CsrfViewMiddleware",
     "django.contrib.auth.middleware.AuthenticationMiddleware",
+    "security.middleware.SecurityLoginRedirectMiddleware",
     "django.contrib.messages.middleware.MessageMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
 ]
@@ -232,8 +235,42 @@ RING_WEBHOOK_URL = os.getenv(
     "https://ring.ioloj.co.uk/ring/webhook/"
 )
 
+RING_MOBILE_RELEASE_DIR = Path(
+    os.getenv(
+        "RING_MOBILE_RELEASE_DIR",
+        str(BASE_DIR / "mobile_releases"),
+    )
+)
+
+try:
+    RING_MOBILE_RELEASES = json.loads(
+        os.getenv("RING_MOBILE_RELEASES", "[]")
+    )
+except json.JSONDecodeError:
+    RING_MOBILE_RELEASES = []
+
+RING_MOBILE_IOS_BUNDLE_ID = os.getenv(
+    "RING_MOBILE_IOS_BUNDLE_ID",
+    "com.ringalertviewer",
+)
+
+RING_APNS_KEY_ID = os.getenv("RING_APNS_KEY_ID", "")
+RING_APNS_TEAM_ID = os.getenv("RING_APNS_TEAM_ID", "")
+RING_APNS_BUNDLE_ID = os.getenv(
+    "RING_APNS_BUNDLE_ID",
+    RING_MOBILE_IOS_BUNDLE_ID,
+)
+RING_APNS_PRIVATE_KEY_FILE = os.getenv("RING_APNS_PRIVATE_KEY_FILE", "")
+RING_APNS_PRODUCTION = os.getenv("RING_APNS_PRODUCTION", "false").lower() == "true"
+
+RING_ADM_CLIENT_ID = os.getenv("RING_ADM_CLIENT_ID", "")
+RING_ADM_CLIENT_SECRET = os.getenv("RING_ADM_CLIENT_SECRET", "")
+
 CSRF_COOKIE_SECURE = True
 SESSION_COOKIE_SECURE = True
+SESSION_COOKIE_AGE = 12 * 60 * 60
+SESSION_SAVE_EVERY_REQUEST = False
+LOGIN_URL = "/security/login/"
 
 CSRF_TRUSTED_ORIGINS = [
     "https://ring.ioloj.co.uk",

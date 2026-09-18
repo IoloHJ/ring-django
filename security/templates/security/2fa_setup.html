@@ -1,0 +1,17 @@
+{% extends "base.html" %}
+{% block title %}Set up 2FA | Ring Security{% endblock %}
+{% block content %}
+<main class="security-card">
+    <p class="security-eyebrow">FIRST LOGIN</p>
+    <h1>Set up Google Authenticator</h1>
+    <p>Scan this QR code in Google Authenticator, then enter the six-digit code it generates.</p>
+    <img class="security-qr" src="{% url 'security-2fa-qr' %}" alt="Google Authenticator setup QR code">
+    <p class="security-secret">Manual key: <code>{{ secret }}</code></p>
+    <form method="post" action="{% url 'security-2fa-verify' %}">
+        {% csrf_token %}
+        <label for="code">Authenticator code</label>
+        <input id="code" name="code" inputmode="numeric" pattern="[0-9 ]{6,7}" autocomplete="one-time-code" required>
+        <button type="submit">Enable 2FA</button>
+    </form>
+</main>
+{% endblock %}

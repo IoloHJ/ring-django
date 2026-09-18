@@ -6,6 +6,7 @@ import logging
 import secrets
 import time
 from django.shortcuts import render
+from django.contrib.auth.decorators import login_required
 import requests
 import logging
 import requests
@@ -26,6 +27,7 @@ from django.conf import settings
 
 from .models import RingToken, RingWebhookEvent
 from .alert_processing import create_alert_from_payload
+from .push_notifications import send_alert_push
 
 
 logger = logging.getLogger(__name__)
@@ -163,6 +165,7 @@ def ring_devices(request):
 # LIVE VIEW PAGE
 # ============================================================
 
+@login_required
 def ring_live_page(request):
     """
     Browser UI for selecting a Ring device and viewing live video.
@@ -1361,6 +1364,7 @@ def ring_webhook(request):
             "Ring alert created: %s",
             alert.event_id,
         )
+        send_alert_push(alert)
     elif alert is None:
         logger.warning(
             "Ring webhook has no alert event ID: %s",
@@ -1685,6 +1689,7 @@ def ring_api_post(url, payload):
 # ============================================================================
 
 @require_GET
+@login_required
 def ring_history(request):
     """
     Render the Ring history page.

@@ -4,9 +4,12 @@ from unittest.mock import Mock, patch
 from django.test import TestCase, override_settings
 from django.utils import timezone
 from django.core.management import call_command
+from django.contrib.auth import get_user_model
 
 from ring_api.alert_processing import create_alert_from_history_event
-from ring_api.models import RingAlert, RingToken
+from ring_api.models import MobilePushDevice, RingAlert, RingToken
+from security.models import AppInstallation
+from security.services import hash_app_token
 
 
 @override_settings(MIDDLEWARE=[])
@@ -161,3 +164,91 @@ class RingWebhookTests(TestCase):
             request.args[0],
         )
         self.assertEqual(request.kwargs["json"]["duration"], 60000)
+
+    @override_settings(
+        RING_MOBILE_RELEASES=[
+            {
+                "version": "0.0.1",
+                "android": "ring-alert-viewer-0.0.1.apk",
+                "ios": "ring-alert-viewer-0.0.1.ipa",
+            }
+        ]
+    )
+    def test_mobile_install_page_lists_configured_release(self):
+        response = self.client.get("/ring/mobile/install/")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Version 0.0.1")
+        self.assertContains(response, "Download Android / Fire TV APK")
+        self.assertContains(response, "Install on iPhone / iPad")
+
+    @override_settings(
+        RING_MOBILE_RELEASES=[
+            {
+                "version": "0.0.1",
+                "android": "ring-alert-viewer-0.0.1.apk",
+                "ios": "ring-alert-viewer-0.0.1.ipa",
+            }
+        ]
+    )
+    def test_mobile_ios_manifest_points_to_versioned_ipa(self):
+        response = self.client.get(
+            "/ring/mobile/ios/0.0.1/manifest.plist",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "bundle-version")
+        self.assertContains(response, "/ring/mobile/ios/0.0.1/download/")
+
+    def test_mobile_push_registration_stores_apns_token(self):
+        user = get_user_model().objects.create_user(
+            username="push-user",
+            password="test-password",
+        )
+        app_token = "app-test-token"
+        AppInstallation.objects.create(
+            user=user,
+            installation_id="installation-1",
+            token_hash=hash_app_token(app_token),
+            token_prefix=app_token[:12],
+            platform="ios",
+        )
+        response = self.client.post(
+            "/ring/mobile/push/register/",
+            data={
+                "provider": "apns",
+                "platform": "ios",
+                "token": "apns-device-token",
+            },
+            content_type="application/json",
+            HTTP_AUTHORIZATION=f"Bearer {app_token}",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(
+            MobilePushDevice.objects.filter(
+                provider="apns",
+                token="apns-device-token",
+                active=True,
+            ).exists()
+        )
+
+    @patch("ring_api.views.send_alert_push")
+    def test_new_webhook_alert_dispatches_push(self, send_push):
+        response = self.client.post(
+            "/ring/webhook/",
+            data={
+                "data": {
+                    "id": "push-event-123",
+                    "type": "motion_detected",
+                    "attributes": {"source": "device-push"},
+                },
+            },
+            content_type="application/json",
+            HTTP_X_REQUEST_ID="push-request-123",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        send_push.assert_called_once_with(
+            RingAlert.objects.get(event_id="push-event-123")
+        )

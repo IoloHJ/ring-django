@@ -11,6 +11,8 @@ db.sqlite3
 *.sqlite3
 
 staticfiles/
+mobile_releases/*.apk
+mobile_releases/*.ipa
 
 .DS_Store
 
