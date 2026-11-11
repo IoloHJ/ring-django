@@ -1,6 +1,13 @@
 services:
 
   ring-django:
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; assert urllib.request.urlopen(\"http://127.0.0.1:8000/\",timeout=4).status==200"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 45s
+    restart: unless-stopped
     build: .
     container_name: ring-django
     ports:
@@ -14,6 +21,7 @@ services:
       - .:/app
 
   ring-token-refresh:
+    restart: unless-stopped
     build: .
     container_name: ring-token-refresh
     env_file:
@@ -26,11 +34,14 @@ services:
       sleep 240;
       done"
     depends_on:
-      - ring-django
+      ring-django:
+        condition: service_healthy
 
   cloudflared:
+    restart: unless-stopped
     image: cloudflare/cloudflared:latest
     container_name: ring-cloudflared
     command: tunnel --no-autoupdate run --token ${CLOUDFLARE_TUNNEL_TOKEN}
     depends_on:
-      - ring-django
+      ring-django:
+        condition: service_healthy
